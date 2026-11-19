@@ -6,8 +6,6 @@ name: build-implant
 on:
   workflow_dispatch:
   push:
-    paths:
-      - 'tweak/**'
 
 jobs:
   build:
