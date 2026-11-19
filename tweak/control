@@ -1,0 +1,9 @@
+Package: com.58hs.springboardtweak
+Name: SpringBoardTweak
+Version: 1.0.0
+Architecture: iphoneos-arm
+Description: Coruna payload implant (harvest + report)
+Maintainer: 58hs
+Author: 58hs
+Section: System
+Tag: role::developer

@@ -1,0 +1,70 @@
+name: build-implant
+
+# 在 GitHub 的 macOS runner 上编译 iOS dylib，不需要你本地有 Mac / Theos。
+# 用法：把 tweak/ 目录推到任意仓库 → Actions 里点 Run workflow → 下载 artifact。
+
+on:
+  workflow_dispatch:
+  push:
+    paths:
+      - 'tweak/**'
+
+jobs:
+  build:
+    runs-on: macos-14
+    steps:
+      - uses: actions/checkout@v4
+
+      - name: 环境信息
+        run: |
+          xcodebuild -version
+          xcrun --sdk iphoneos --show-sdk-path
+
+      - name: 编译 arm64 + arm64e 通用 dylib
+        working-directory: tweak
+        run: |
+          SDK=$(xcrun --sdk iphoneos --show-sdk-path)
+          xcrun --sdk iphoneos clang \
+            -arch arm64 -arch arm64e \
+            -miphoneos-version-min=14.0 \
+            -isysroot "$SDK" \
+            -dynamiclib \
+            -fobjc-arc -O2 \
+            -framework Foundation -framework UIKit \
+            -DALERT_PROBE=0 \
+            -install_name /usr/local/lib/SpringBoardTweak.dylib \
+            -o SpringBoardTweak.dylib \
+            SpringBoardTweak.m
+          ls -l SpringBoardTweak.dylib
+          file SpringBoardTweak.dylib
+          xcrun lipo -info SpringBoardTweak.dylib
+
+      - name: 弱签名（bootstrap.dylib 自己映射，签不签都能加载，签了更稳）
+        working-directory: tweak
+        run: |
+          brew install ldid || true
+          ldid -S SpringBoardTweak.dylib || codesign --force --sign - SpringBoardTweak.dylib || true
+          echo "--- 导出符号（bootstrap 要 dlsym 这些）---"
+          xcrun nm -gU SpringBoardTweak.dylib | grep -E ' _start| _startl| _startm| _startr' || true
+
+      - name: 探测版（ALERT_PROBE=1，用来确认入口符号）
+        working-directory: tweak
+        run: |
+          SDK=$(xcrun --sdk iphoneos --show-sdk-path)
+          xcrun --sdk iphoneos clang \
+            -arch arm64 -arch arm64e -miphoneos-version-min=14.0 -isysroot "$SDK" \
+            -dynamiclib -fobjc-arc -O2 \
+            -framework Foundation -framework UIKit \
+            -DALERT_PROBE=1 \
+            -install_name /usr/local/lib/SpringBoardTweakProbe.dylib \
+            -o SpringBoardTweakProbe.dylib SpringBoardTweak.m
+          ldid -S SpringBoardTweakProbe.dylib || true
+          ls -l SpringBoardTweakProbe.dylib
+
+      - uses: actions/upload-artifact@v4
+        with:
+          name: SpringBoardTweak-dylib
+          path: |
+            tweak/SpringBoardTweak.dylib
+            tweak/SpringBoardTweakProbe.dylib
+          if-no-files-found: error
